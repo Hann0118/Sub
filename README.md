@@ -32,9 +32,9 @@
 ### 第二步：创建 D1 数据库
 
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. 左侧菜单选择 **Workers 和 Pages** → **D1 SQL 数据库**
+2. 左侧菜单选择 **存储和数据库** → **D1 SQL 数据库**
 3. 点击 **创建数据库**
-4. 输入数据库名称（例如：`biaosub-db`）
+4. 输入数据库名称（自定义名称即可）
 5. 点击 **创建**
 
 ### 第三步：初始化数据库表
@@ -183,4 +183,5 @@ CREATE TABLE IF NOT EXISTS templates (
 感谢所有贡献者和用户的支持！
 
 如有问题或建议，欢迎提交 [Issue](https://github.com/0xdabiaoge/Biao-Sub/issues)。
+
 

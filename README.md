@@ -42,7 +42,6 @@
 在 D1 数据库控制台中，进入 **控制台** 标签，依次执行以下 SQL 命令：
 
 ```sql
--- 1. 创建订阅资源表
 CREATE TABLE IF NOT EXISTS subscriptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -54,8 +53,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     sort_order INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
--- 2. 创建聚合组表
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -65,8 +62,6 @@ CREATE TABLE IF NOT EXISTS groups (
     sort_order INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
--- 3. 创建模板表
 CREATE TABLE IF NOT EXISTS templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -183,5 +178,6 @@ CREATE TABLE IF NOT EXISTS templates (
 感谢所有贡献者和用户的支持！
 
 如有问题或建议，欢迎提交 [Issue](https://github.com/0xdabiaoge/Biao-Sub/issues)。
+
 
 

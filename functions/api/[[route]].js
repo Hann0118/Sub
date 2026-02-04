@@ -155,8 +155,8 @@ app.get('/g/:token', async (c) => {
                     yaml += `  - name: ${g.name}\n    type: ${g.type}\n    proxies:\n`;
                     if (g.proxies && Array.isArray(g.proxies)) {
                         g.proxies.forEach(p => {
-                            // 1. 检查是否是其他策略组名称（嵌套引用）- 优先级高于资源组，防止被误展开
-                            if (groupNames.has(p)) {
+                            // 1. 检查是否是其他策略组名称（嵌套引用）- 优先级高于资源组，但需排除当前组名以支持同名资源组展开
+                            if (groupNames.has(p) && p !== g.name) {
                                 yaml += `      - ${p}\n`;
                             }
                             // 2. 检查是否是资源名称，如果是则展开

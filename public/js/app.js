@@ -9,7 +9,8 @@ import {
     templateModal, userTemplates,
     previewModal, settingsModal,
     nodeSelector, clashNodeSelector,
-    clashSelectedList, resourceListEl, previewListEl, groupResourceListEl, groupListEl
+    clashSelectedList, resourceListEl, previewListEl, groupResourceListEl, groupListEl,
+    stats
 } from './store.js'
 
 // 导入工具函数
@@ -22,7 +23,7 @@ import { loadData, loadTemplates } from './api.js'
 import { handleLogin, logout, checkAuth } from './modules/auth.js'
 import {
     openResourceModal, editResource, saveResource, deleteResource, refreshResource,
-    selectAllResources, executeBatchDelete, previewNodes
+    selectAllResources, executeBatchDelete, previewNodes, handleUrlInput
 } from './modules/resourcePool.js'
 import {
     openGroupModal, selectTemplate, editGroup, saveGroup, deleteGroup,
@@ -73,7 +74,7 @@ const app = createApp({
             groupModal, groupForm, groupNameError,
             templateModal, userTemplates,
             previewModal, settingsModal,
-            nodeSelector, clashNodeSelector,
+            nodeSelector, clashNodeSelector, stats,
             clashSelectedList, resourceListEl, previewListEl, groupResourceListEl, groupListEl,
 
             // 工具函数
@@ -84,7 +85,7 @@ const app = createApp({
 
             // 资源池
             openResourceModal, editResource, saveResource, deleteResource, refreshResource,
-            selectAllResources, executeBatchDelete, previewNodes,
+            selectAllResources, executeBatchDelete, previewNodes, handleUrlInput,
 
             // 聚合组
             openGroupModal, selectTemplate, editGroup, saveGroup, deleteGroup,

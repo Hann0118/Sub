@@ -335,12 +335,59 @@ app.post('/check', async (c) => {
     } catch (e) { return c.json({ success: false, error: e.message }) }
 })
 app.post('/login', async (c) => { const { password } = await c.req.json(); return c.json({ success: password === c.env.ADMIN_PASSWORD }) })
-app.get('/settings', async (c) => { return c.json({ success: true, data: {} }) }); app.post('/settings', async (c) => { return c.json({ success: true }) })
-app.post('/backup/import', async (c) => {
-    const { items, groups } = await c.req.json();
-    if (items) { const s = c.env.DB.prepare("INSERT INTO subscriptions (name, url, type, info, params, status, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)"); await c.env.DB.batch(items.map(i => s.bind(i.name, i.url, i.type || 'subscription', JSON.stringify(i.info), JSON.stringify({}), i.status ?? 1, i.sort_order ?? 0))); }
-    if (groups) { const s = c.env.DB.prepare("INSERT INTO groups (name, token, config, status, sort_order) VALUES (?, ?, ?, ?, ?)"); await c.env.DB.batch(groups.map(g => s.bind(g.name, g.token, JSON.stringify(g.config), g.status ?? 1, g.sort_order ?? 0))); }
-    return c.json({ success: true })
+app.get('/backup', async (c) => {
+    try {
+        const subs = (await c.env.DB.prepare("SELECT * FROM subscriptions").all()).results;
+        const groups = (await c.env.DB.prepare("SELECT * FROM groups").all()).results;
+        const templates = (await c.env.DB.prepare("SELECT * FROM templates").all()).results;
+
+        return c.json({
+            success: true,
+            data: {
+                // 统一格式，确保解析 JSON 字段
+                items: subs.map(s => { try { s.info = JSON.parse(s.info); } catch (e) { s.info = {}; } return s; }),
+                groups: groups.map(g => {
+                    try {
+                        g.config = JSON.parse(g.config || '[]');
+                        g.clash_config = JSON.parse(g.clash_config || '{}');
+                    } catch (e) {
+                        g.config = []; g.clash_config = {};
+                    }
+                    return g;
+                }),
+                templates: templates.map(t => {
+                    try {
+                        t.groups = JSON.parse(t.groups || '[]');
+                    } catch (e) {
+                        t.groups = [];
+                    }
+                    return t;
+                })
+            }
+        });
+    } catch (e) { return c.json({ success: false, error: e.message }) }
+})
+
+app.post('/restore', async (c) => {
+    const { items, groups, templates } = await c.req.json();
+    try {
+        const batch = [];
+        if (items && Array.isArray(items)) {
+            const s = c.env.DB.prepare("INSERT INTO subscriptions (name, url, type, info, params, status, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            items.forEach(i => batch.push(s.bind(i.name, i.url, i.type || 'subscription', JSON.stringify(i.info || {}), JSON.stringify(i.params || {}), i.status ?? 1, i.sort_order ?? 0)));
+        }
+        if (groups && Array.isArray(groups)) {
+            const s = c.env.DB.prepare("INSERT INTO groups (name, token, config, clash_config, status, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
+            groups.forEach(g => batch.push(s.bind(g.name, g.token, JSON.stringify(g.config || []), JSON.stringify(g.clash_config || {}), g.status ?? 1, g.sort_order ?? 0)));
+        }
+        if (templates && Array.isArray(templates)) {
+            const s = c.env.DB.prepare("INSERT INTO templates (name, header, groups, rules) VALUES (?, ?, ?, ?)");
+            templates.forEach(t => batch.push(s.bind(t.name, t.header || '', JSON.stringify(t.groups || []), t.rules || '')));
+        }
+
+        if (batch.length > 0) await c.env.DB.batch(batch);
+        return c.json({ success: true });
+    } catch (e) { return c.json({ success: false, error: e.message }) }
 })
 
 export const onRequest = handle(app)

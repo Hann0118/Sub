@@ -140,11 +140,19 @@ export const isResourceSelected = (resId) => {
 }
 
 export const selectAllGroupResources = () => {
-    groupForm.value.config = resources.value.map(r => ({
-        subId: r.id,
-        include: [],
-        dialerProxy: { enabled: false, group: '' }
-    }))
+    const currentConfig = groupForm.value.config || []
+    const configMap = new Map(currentConfig.map(c => [c.subId, c]))
+
+    groupForm.value.config = resources.value.map(r => {
+        if (configMap.has(r.id)) {
+            return configMap.get(r.id)
+        }
+        return {
+            subId: r.id,
+            include: [],
+            dialerProxy: { enabled: false, group: '' }
+        }
+    })
 }
 
 export const deselectAllGroupResources = () => {

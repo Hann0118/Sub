@@ -19,6 +19,27 @@ export const openResourceModal = () => {
     resourceModal.show = true
 }
 
+// 监听 URL 输入变化（用于单节点名称同步）
+export const handleUrlInput = () => {
+    if (resourceForm.value.type === 'node' && resourceForm.value.url) {
+        const val = resourceForm.value.url.trim()
+        // 1. 如果输入包含换行符（多行粘贴模式）
+        // 2. 或者检测到包含多个协议头（单行粘贴了多个链接）
+        // 则强制清空名称，让后端自动提取各节点名称
+        const hasMultiple = val.includes('\n') || (val.match(/:\/\//g) || []).length > 1
+
+        if (hasMultiple) {
+            resourceForm.value.name = ''
+            return
+        }
+
+        const name = getNameFromLink(resourceForm.value.url)
+        if (name) {
+            resourceForm.value.name = name
+        }
+    }
+}
+
 // 编辑资源
 export const editResource = (item) => {
     resourceForm.value = { ...item }

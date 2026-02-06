@@ -1,5 +1,18 @@
 // BiaoSUB 状态管理
-const { ref, reactive } = Vue
+const { ref, reactive, computed } = Vue
+
+// ============ 统计监控 ============
+export const stats = reactive({
+    nodeCount: computed(() => resources.value.filter(r => r.type === 'node').length),
+    groupCount: computed(() => resources.value.filter(r => r.type === 'group').length),
+    aggregateCount: computed(() => groups.value.length),
+    totalActualNodes: computed(() => {
+        return resources.value.reduce((sum, r) => {
+            const count = (r.info && r.info.nodeCount) ? parseInt(r.info.nodeCount) : 0
+            return sum + count
+        }, 0)
+    })
+})
 
 // ============ 核心数据 ============
 export const resources = ref([])

@@ -4,16 +4,24 @@ import { handle } from 'hono/cloudflare-pages'
 import { generateToken, safeBase64Encode } from '../_lib/utils.js';
 import { generateNodeLink, toClashProxy, assembleGroupConfig } from '../_lib/generator.js';
 import { parseNodesCommon } from '../_lib/parser.js';
+import { processRemoteSubscription } from '../_lib/fetcher.js';
 
 const app = new Hono().basePath('/api')
 
-// --- 表结构迁移优化 ---
+// --- 表结构迁移优化（只执行一次）---
+let migrationDone = false;
 app.use('/*', async (c, next) => {
-    // 确保 groups 表有 cached_yaml 字段
-    try {
-        await c.env.DB.prepare(`ALTER TABLE groups ADD COLUMN cached_yaml TEXT`).run();
-    } catch (e) {
-        // 如果字段已存在，会报错，忽略即可
+    if (!migrationDone) {
+        const migrations = [
+            `ALTER TABLE groups ADD COLUMN cached_yaml TEXT`,
+            `ALTER TABLE groups ADD COLUMN access_count INTEGER DEFAULT 0`,
+            `ALTER TABLE groups ADD COLUMN last_accessed TEXT`,
+            `ALTER TABLE subscriptions ADD COLUMN source_url TEXT`
+        ];
+        for (const sql of migrations) {
+            try { await c.env.DB.prepare(sql).run(); } catch (e) { /* 字段已存在则忽略 */ }
+        }
+        migrationDone = true;
     }
     await next();
 })
@@ -37,8 +45,14 @@ app.get('/g/:token', async (c) => {
 
     try {
         // 1. 优先尝试从缓存读取
-        const group = await c.env.DB.prepare("SELECT name, cached_yaml, clash_config FROM groups WHERE token = ? AND status = 1").bind(token).first();
+        const group = await c.env.DB.prepare("SELECT name, cached_yaml, clash_config, config FROM groups WHERE token = ? AND status = 1").bind(token).first();
         if (!group) return c.text('Invalid Group Token', 404);
+
+        // 异步更新访问统计（不阻塞响应）
+        c.executionCtx.waitUntil(
+            c.env.DB.prepare("UPDATE groups SET access_count = COALESCE(access_count, 0) + 1, last_accessed = datetime('now') WHERE token = ?")
+                .bind(token).run()
+        );
 
         // 设置文件名
         const filename = encodeURIComponent(group.name || 'GroupConfig');
@@ -160,28 +174,173 @@ app.put('/subs/:id', async (c) => {
 
     return c.json({ success: true })
 })
-app.delete('/subs/:id', async (c) => { await c.env.DB.prepare("DELETE FROM subscriptions WHERE id=?").bind(c.req.param('id')).run(); return c.json({ success: true }) })
+// 辅助函数：刷新包含指定资源ID的聚合组缓存，并清理已删除资源的引用
+const refreshGroupCacheByResourceIds = async (db, resourceIds) => {
+    try {
+        const idSet = new Set(resourceIds.map(id => String(id)));
+        const allGroups = await db.prepare("SELECT id, token, config, clash_config FROM groups WHERE status = 1").all();
+        const batchUpdates = [];
+
+        for (const g of allGroups.results) {
+            const config = JSON.parse(g.config || '[]');
+            const clashConfig = g.clash_config ? JSON.parse(g.clash_config) : {};
+            const resources = clashConfig.resources || [];
+
+            // 检查是否包含被删除的资源
+            const isAffected = config.some(c => idSet.has(String(c.subId))) ||
+                resources.some(r => idSet.has(String(r.subId)));
+
+            if (isAffected) {
+                // 从 config 中移除已删除资源的引用
+                const newConfig = config.filter(c => !idSet.has(String(c.subId)));
+
+                // 从 clash_config.resources 中也移除
+                if (clashConfig.resources) {
+                    clashConfig.resources = resources.filter(r => !idSet.has(String(r.subId)));
+                }
+
+                // 重新生成 YAML 缓存
+                const newYaml = await assembleGroupConfig(db, g.token, parseNodesCommon);
+
+                // 同时更新 config、clash_config 和 cached_yaml
+                batchUpdates.push(
+                    db.prepare("UPDATE groups SET config = ?, clash_config = ?, cached_yaml = ? WHERE id = ?")
+                        .bind(JSON.stringify(newConfig), JSON.stringify(clashConfig), newYaml || '', g.id)
+                );
+            }
+        }
+
+        // 分批执行更新（每批最多50条）
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < batchUpdates.length; i += BATCH_SIZE) {
+            const chunk = batchUpdates.slice(i, i + BATCH_SIZE);
+            await db.batch(chunk);
+        }
+    } catch (e) {
+        console.error('Refresh group cache failed:', e.message);
+    }
+};
+
+app.delete('/subs/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare("DELETE FROM subscriptions WHERE id=?").bind(id).run();
+
+    // 刷新包含该资源的聚合组缓存
+    await refreshGroupCacheByResourceIds(c.env.DB, [id]);
+
+    return c.json({ success: true });
+})
+
 app.post('/subs/delete', async (c) => {
     const { ids } = await c.req.json();
     if (!ids || !Array.isArray(ids) || ids.length === 0) return c.json({ success: true });
-    // 改用 Batch 删除，更稳定
+
+    // 分批删除（每批最多50条，避免超过D1限制）
+    const BATCH_SIZE = 50;
     const stmt = c.env.DB.prepare("DELETE FROM subscriptions WHERE id = ?");
-    await c.env.DB.batch(ids.map(id => stmt.bind(id)));
-    return c.json({ success: true })
+
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const chunk = ids.slice(i, i + BATCH_SIZE);
+        await c.env.DB.batch(chunk.map(id => stmt.bind(id)));
+    }
+
+    // 刷新包含这些资源的聚合组缓存
+    await refreshGroupCacheByResourceIds(c.env.DB, ids);
+
+    return c.json({ success: true });
 })
 app.post('/sort', async (c) => { const { ids } = await c.req.json(); const s = c.env.DB.prepare("UPDATE subscriptions SET sort_order=? WHERE id=?"); await c.env.DB.batch(ids.map((id, i) => s.bind(i, id))); return c.json({ success: true }) })
 app.post('/subs/reorder', async (c) => { const { order } = await c.req.json(); const s = c.env.DB.prepare("UPDATE subscriptions SET sort_order=? WHERE id=?"); await c.env.DB.batch(order.map((id, i) => s.bind(i, id))); return c.json({ success: true }) })
 
+// --- 远程订阅源管理 ---
+app.post('/remote', async (c) => {
+    const b = await c.req.json();
+    const sourceUrl = b.url;
+    const name = b.name || '';
+
+    if (!sourceUrl) return c.json({ success: false, error: '请输入订阅链接' }, 400);
+
+    try {
+        const { nodes, nodeLinks, subInfo } = await processRemoteSubscription(sourceUrl, parseNodesCommon);
+
+        const finalName = name || subInfo.fileName || `远程订阅 (${nodes.length}个节点)`;
+
+        await c.env.DB.prepare(
+            "INSERT INTO subscriptions (name, url, source_url, type, params, info, sort_order, status) VALUES (?,?,?,?,?,?,0,1)"
+        ).bind(
+            finalName,
+            nodeLinks,
+            sourceUrl,
+            'remote',
+            JSON.stringify({}),
+            JSON.stringify(subInfo)
+        ).run();
+
+        return c.json({ success: true, data: { name: finalName, nodeCount: nodes.length, subInfo } });
+    } catch (e) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+})
+
+app.post('/remote/refresh/:id', async (c) => {
+    const id = c.req.param('id');
+
+    try {
+        const sub = await c.env.DB.prepare("SELECT * FROM subscriptions WHERE id = ? AND type = 'remote'").bind(id).first();
+        if (!sub) return c.json({ success: false, error: '资源不存在或不是远程订阅类型' }, 404);
+
+        const { nodes, nodeLinks, subInfo } = await processRemoteSubscription(sub.source_url, parseNodesCommon);
+
+        await c.env.DB.prepare(
+            "UPDATE subscriptions SET url = ?, info = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).bind(nodeLinks, JSON.stringify(subInfo), id).run();
+
+        // 刷新关联的聚合组缓存
+        await refreshGroupCacheByResourceIds(c.env.DB, [id]);
+
+        return c.json({ success: true, data: { nodeCount: nodes.length, subInfo } });
+    } catch (e) {
+        return c.json({ success: false, error: e.message }, 500);
+    }
+})
+
 // --- 聚合组管理 ---
 app.get('/groups', async (c) => {
     const { results } = await c.env.DB.prepare("SELECT * FROM groups ORDER BY sort_order ASC, id DESC").all();
-    return c.json({
-        success: true, data: results.map(g => ({
-            ...g,
-            config: JSON.parse(g.config || '[]'),
-            clash_config: g.clash_config ? JSON.parse(g.clash_config) : { mode: 'generate', header: "", groups: [], rules: "", resources: [], raw_yaml: "" }
-        }))
-    })
+
+    // 获取所有有效的资源ID
+    const { results: allSubs } = await c.env.DB.prepare("SELECT id FROM subscriptions").all();
+    const validIds = new Set(allSubs.map(s => s.id));
+
+    const cleanupUpdates = [];
+
+    const data = results.map(g => {
+        const config = JSON.parse(g.config || '[]');
+        const clashConfig = g.clash_config ? JSON.parse(g.clash_config) : { mode: 'generate', header: "", groups: [], rules: "", resources: [], raw_yaml: "" };
+
+        // 过滤掉不存在的资源引用
+        const cleanedConfig = config.filter(c => validIds.has(c.subId));
+        if (clashConfig.resources) {
+            clashConfig.resources = clashConfig.resources.filter(r => validIds.has(r.subId));
+        }
+
+        // 如果有变化，记录需要清理的聚合组
+        if (cleanedConfig.length !== config.length) {
+            cleanupUpdates.push(
+                c.env.DB.prepare("UPDATE groups SET config = ?, clash_config = ? WHERE id = ?")
+                    .bind(JSON.stringify(cleanedConfig), JSON.stringify(clashConfig), g.id)
+            );
+        }
+
+        return { ...g, config: cleanedConfig, clash_config: clashConfig };
+    });
+
+    // 异步清理数据库中的无效引用
+    if (cleanupUpdates.length > 0) {
+        c.executionCtx.waitUntil(c.env.DB.batch(cleanupUpdates));
+    }
+
+    return c.json({ success: true, data });
 })
 app.post('/groups', async (c) => {
     const b = await c.req.json();

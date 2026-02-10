@@ -123,3 +123,20 @@ export const getNameFromLink = (url) => {
     }
     return ''
 }
+
+// 格式化时间为友好显示
+export const formatTime = (timeStr) => {
+    if (!timeStr) return ''
+    try {
+        // D1 返回的是 UTC 时间，需要加 Z 后缀
+        const t = new Date(timeStr.endsWith('Z') ? timeStr : timeStr + 'Z')
+        const now = new Date()
+        const diff = Math.floor((now - t) / 1000)
+        if (diff < 60) return '刚刚'
+        if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+        if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
+        return `${Math.floor(diff / 86400)} 天前`
+    } catch (e) {
+        return timeStr
+    }
+}

@@ -4,11 +4,11 @@ import {
     toast, batchMode, selectedResources, resourceModal, groupModal, templateModal,
     previewModal, settingsModal, resourceForm, groupForm, groupNameError, nodeSelector,
     clashNodeSelector, clashSelectedList, resourceListEl, previewListEl,
-    groupResourceListEl, groupListEl, userTemplates, stats, theme
+    groupResourceListEl, groupListEl, userTemplates, stats, theme, remoteModal
 } from './store.js'
 
 // 导入工具函数
-import { showToast, copyText, getProgressClass, isExpired } from './utils.js'
+import { showToast, copyText, getProgressClass, isExpired, formatTime } from './utils.js'
 
 // 导入API
 import { loadResources, loadGroups, loadTemplates } from './api.js'
@@ -42,6 +42,9 @@ import {
     openSettings, exportBackup, importBackup
 } from './modules/settings.js'
 import { initTheme, toggleTheme } from './modules/theme.js'
+import {
+    openRemoteModal, saveRemoteSubscription, refreshRemote
+} from './modules/remoteSubscription.js'
 
 // 创建 Vue 应用
 const { createApp, onMounted, nextTick } = Vue
@@ -72,11 +75,11 @@ createApp({
             groupModal, groupForm, groupNameError,
             templateModal, userTemplates,
             previewModal, settingsModal,
-            nodeSelector, clashNodeSelector, stats, theme,
+            nodeSelector, clashNodeSelector, stats, theme, remoteModal,
             clashSelectedList, resourceListEl, previewListEl, groupResourceListEl, groupListEl,
 
             // 工具函数
-            showToast, copyText, getProgressClass, isExpired,
+            showToast, copyText, getProgressClass, isExpired, formatTime,
             toggleTheme, // 使用独立模块的主题切换
 
             // 认证
@@ -103,7 +106,10 @@ createApp({
             selectUserTemplate, deleteTemplate, saveAsTemplate, loadTemplates,
 
             // 设置
-            openSettings, exportBackup, importBackup
+            openSettings, exportBackup, importBackup,
+
+            // 远程订阅
+            openRemoteModal, saveRemoteSubscription, refreshRemote
         }
     }
 }).mount('#app')

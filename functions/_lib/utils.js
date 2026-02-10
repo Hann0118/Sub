@@ -30,8 +30,10 @@ export const deepBase64Decode = (str, depth = 0) => {
     if (!str || typeof str !== 'string') return str;
     try {
         const clean = str.replace(/\s/g, '');
-        if (clean.length < 10 || /[^A-Za-z0-9+/=_]/.test(clean)) return str;
+        if (clean.length < 10) return str;
+        // 先将 URL-safe Base64 字符替换为标准字符，再做合法性检查
         let safeStr = clean.replace(/-/g, '+').replace(/_/g, '/');
+        if (/[^A-Za-z0-9+/=]/.test(safeStr)) return str;
         while (safeStr.length % 4) safeStr += '=';
         let binary; try { binary = atob(safeStr); } catch (e) { return str; }
         const bytes = new Uint8Array(binary.length);

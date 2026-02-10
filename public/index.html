@@ -141,6 +141,8 @@
                                 class="btn btn-sm btn-ghost">取消</button>
                         </div>
                         <button v-else @click="batchMode=true" class="btn btn-ghost btn-sm">批量管理</button>
+                        <button @click="openRemoteModal()" class="btn btn-accent btn-sm text-white"><i
+                                class="fa-solid fa-cloud-arrow-down mr-1"></i>导入订阅</button>
                         <button @click="openResourceModal()" class="btn btn-primary btn-sm"><i
                                 class="fa-solid fa-plus"></i> 添加资源</button>
                     </div>
@@ -161,18 +163,20 @@
                                         <h2 class="card-title text-base text-adaptive-white truncate pr-2">
                                             {{ item.name }}
                                             <span class="badge badge-sm font-bold"
-                                                :class="item.type==='node'?'badge-secondary':'badge-primary'">{{
-                                                item.type }}</span>
+                                                :class="item.type==='node'?'badge-secondary':item.type==='remote'?'badge-accent':'badge-primary'">{{
+                                                item.type === 'remote' ? '远程' : item.type }}</span>
                                         </h2>
                                         <p
                                             class="text-xs text-adaptive-muted font-mono mt-1 break-all line-clamp-1 opacity-70">
-                                            {{ item.url }}
+                                            {{ item.type === 'remote' && item.source_url ? item.source_url : item.url }}
                                         </p>
                                     </div>
                                 </div>
                                 <div class="flex flex-col items-end gap-2 flex-shrink-0">
-                                    <button @click="refreshResource(item)" class="btn btn-xs btn-circle btn-ghost"
-                                        :class="{'loading': item.refreshing}" title="刷新订阅信息">
+                                    <button
+                                        @click="item.type === 'remote' ? refreshRemote(item) : refreshResource(item)"
+                                        class="btn btn-xs btn-circle btn-ghost" :class="{'loading': item.refreshing}"
+                                        :title="item.type === 'remote' ? '刷新远程订阅' : '刷新订阅信息'">
                                         <i v-if="!item.refreshing" class="fa-solid fa-rotate"></i>
                                     </button>
                                 </div>
@@ -216,6 +220,13 @@
                                         <div class="text-xs text-adaptive-muted mt-1">包含资源: <span
                                                 class="text-adaptive-white font-bold">{{ getGroupResourceCount(group)
                                                 }}</span> 个</div>
+                                        <div class="text-xs text-adaptive-muted mt-0.5">
+                                            <i class="fa-solid fa-chart-simple text-info mr-1"></i>访问
+                                            <span class="text-adaptive-white font-bold">{{ group.access_count || 0
+                                                }}</span> 次
+                                            <span v-if="group.last_accessed" class="ml-1 opacity-70">· {{
+                                                formatTime(group.last_accessed) }}</span>
+                                        </div>
                                     </div>
                                     <div class="flex gap-2 flex-wrap">
                                         <button @click="copyGroupLink(group, 'clash')"
@@ -846,6 +857,67 @@
 
                     <div class="modal-action">
                         <button class="btn btn-ghost" @click="settingsModal.show=false">关闭</button>
+                    </div>
+                </div>
+            </dialog>
+
+            <!-- 远程订阅弹窗 -->
+            <dialog class="modal" :class="{ 'modal-open': remoteModal.show }">
+                <div class="modal-box glass-panel max-w-lg">
+                    <h3 class="font-bold text-lg text-adaptive-white mb-4">
+                        <i class="fa-solid fa-cloud-arrow-down text-accent mr-2"></i>导入远程订阅
+                    </h3>
+                    <!-- 模式切换 -->
+                    <div class="tabs tabs-boxed mb-4 bg-adaptive-input">
+                        <a class="tab" :class="{'tab-active': remoteModal.mode === 'auto'}"
+                            @click="remoteModal.mode='auto'">
+                            <i class="fa-solid fa-bolt mr-1"></i>自动获取
+                        </a>
+                        <a class="tab" :class="{'tab-active': remoteModal.mode === 'manual'}"
+                            @click="remoteModal.mode='manual'">
+                            <i class="fa-solid fa-paste mr-1"></i>手动粘贴
+                        </a>
+                    </div>
+
+                    <div class="flex flex-col gap-4">
+                        <input type="text" v-model="remoteModal.name" placeholder="订阅名称 (可选)"
+                            class="input input-bordered w-full" :disabled="remoteModal.loading" />
+
+                        <!-- 自动获取模式 -->
+                        <template v-if="remoteModal.mode === 'auto'">
+                            <input type="text" v-model="remoteModal.url" placeholder="远程订阅链接 (必填)"
+                                class="input input-bordered w-full" :disabled="remoteModal.loading" />
+                            <div class="text-xs text-adaptive-muted opacity-70">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                如果机场屏蔽了 CF 请切换到"手动粘贴"模式
+                            </div>
+                        </template>
+
+                        <!-- 手动粘贴模式 -->
+                        <template v-else>
+                            <input type="text" v-model="remoteModal.url" placeholder="订阅源 URL (可选，方便记录来源)"
+                                class="input input-bordered input-sm w-full" :disabled="remoteModal.loading" />
+                            <textarea v-model="remoteModal.content" placeholder="粘贴订阅内容（支持 Base64 编码和节点链接）"
+                                class="textarea textarea-bordered w-full h-32 font-mono text-xs"
+                                :disabled="remoteModal.loading"></textarea>
+                            <div class="text-xs text-adaptive-muted opacity-70">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                在浏览器中打开订阅链接，复制全部内容粘贴到上方
+                            </div>
+                        </template>
+
+                        <div v-if="remoteModal.loading" class="text-sm text-info flex items-center gap-2">
+                            <span class="loading loading-spinner loading-sm"></span>
+                            {{ remoteModal.mode === 'auto' ? '正在获取远程订阅...' : '正在解析...' }}
+                        </div>
+                    </div>
+                    <div class="modal-action">
+                        <button class="btn btn-ghost" @click="remoteModal.show=false"
+                            :disabled="remoteModal.loading">取消</button>
+                        <button class="btn btn-accent text-white" @click="saveRemoteSubscription()"
+                            :disabled="remoteModal.loading || (remoteModal.mode === 'auto' ? !remoteModal.url : !remoteModal.content)">
+                            <i class="fa-solid fa-download mr-1"></i>导入
+                        </button>
                     </div>
                 </div>
             </dialog>

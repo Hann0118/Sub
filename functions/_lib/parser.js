@@ -17,8 +17,16 @@ export const parseNodesCommon = (text) => {
     if (!decoded || decoded.length < 5 || /[\x00-\x08]/.test(decoded)) decoded = text;
 
     // 1. 处理以换行分隔的 URI Scheme (支持 hy2/hy 短协议名)
-    const linkRegex = /(vmess|vless|ss|ssr|trojan|hysteria2|hysteria|hy2|hy|tuic|juicity|naive|anytls):\/\/[^\s\n"']+/gi;
-    const matches = decoded.match(linkRegex);
+    // 先按行分割，每行单独匹配协议前缀，避免节点名含空格被截断
+    const protocolPrefix = /^(vmess|vless|ss|trojan|hysteria2|hysteria|hy2|hy|tuic|anytls):\/\/.+/i;
+    const lines = decoded.split(/[\r\n]+/);
+    const matches = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (protocolPrefix.test(trimmed)) {
+            matches.push(trimmed);
+        }
+    }
     if (matches) {
         for (const match of matches) {
             const trimLine = match.trim();
@@ -196,7 +204,7 @@ export const parseNodesCommon = (text) => {
     // 2. 处理 Clash YAML 格式 (仅在 URI 解析失败时)
     if (nodes.length < 1 && (decoded.includes('proxies:') || decoded.includes('name:'))) {
         try {
-            const lines = decoded.split(/\r?\n/);
+            const yamlLines = decoded.split(/\r?\n/);
             let inProxyBlock = false; let currentBlock = [];
             const processYamlBlock = (block) => {
                 const getVal = (k) => {
@@ -232,7 +240,7 @@ export const parseNodesCommon = (text) => {
                 }
                 if (node.server && node.port) addNode(node);
             }
-            for (const line of lines) {
+            for (const line of yamlLines) {
                 if (!line.trim() || line.trim().startsWith('#')) continue;
                 if (line.includes('proxies:')) { inProxyBlock = true; continue; }
                 if (inProxyBlock) {

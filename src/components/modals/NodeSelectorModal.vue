@@ -64,10 +64,12 @@ function confirm() {
     if (store.nodeSelector.selected === 'all') {
       delete configItem.filter
       delete configItem.selectedNodes
+      delete configItem.include
     } else {
       configItem.selectedNodes = store.nodeSelector.tempSelected
       const selectedNames = store.nodeSelector.tempSelected.map(i => store.nodeSelector.nodes[i]?.name || '').filter(Boolean)
       configItem.filter = `${selectedNames.length}/${store.nodeSelector.nodes.length}个节点`
+      configItem.include = selectedNames
     }
   }
   store.nodeSelector.show = false

@@ -150,35 +150,42 @@
               <button @click="addProxyGroup" class="btn btn-xs btn-primary mb-3">
                 <i class="fa-solid fa-plus mr-1"></i> 添加策略组
               </button>
-              <div v-for="(pg, i) in store.groupForm.clash_config.groups" :key="i"
-                class="card bg-adaptive-input border border-panel-border mb-2 p-3">
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                  <input v-model="pg.name" class="input input-bordered input-sm bg-adaptive-input" placeholder="名称" />
-                  <select v-model="pg.type" class="select select-bordered select-sm bg-adaptive-input">
-                    <option value="select">手动选择</option>
-                    <option value="url-test">自动测速</option>
-                    <option value="fallback">故障转移</option>
-                    <option value="load-balance">负载均衡</option>
-                  </select>
-                </div>
-                <div v-if="pg.type === 'url-test' || pg.type === 'fallback'" class="grid grid-cols-3 gap-2 mb-2">
-                  <input v-model="pg.url" class="input input-bordered input-xs bg-adaptive-input" placeholder="测速URL" />
-                  <input v-model.number="pg.interval" type="number" class="input input-bordered input-xs bg-adaptive-input" placeholder="间隔(秒)" />
-                  <input v-model.number="pg.tolerance" type="number" class="input input-bordered input-xs bg-adaptive-input" placeholder="容差(ms)" />
-                </div>
-                <div class="flex items-center gap-2">
-                  <label class="flex items-center gap-1 text-xs">
-                    <input type="checkbox" v-model="pg.useAllProxies" class="checkbox checkbox-xs" /> 使用全部节点
-                  </label>
-                  <button v-if="!pg.useAllProxies" @click="openClashNodeSelector(i)"
-                    class="btn btn-xs btn-ghost text-accent">
-                    <i class="fa-solid fa-list-check"></i> 选择节点 ({{ (pg.proxies || []).length }})
-                  </button>
-                  <div class="flex-1"></div>
-                  <button @click="store.groupForm.clash_config.groups.splice(i, 1)"
-                    class="btn btn-xs btn-ghost text-error">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
+              <div ref="proxyGroupListRef">
+                <div v-for="(pg, i) in store.groupForm.clash_config.groups" :key="pg"
+                  class="card bg-adaptive-input border border-panel-border mb-2 p-3">
+                  <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div class="col-span-2 flex items-center gap-2">
+                      <div class="proxy-drag-handle cursor-grab active:cursor-grabbing text-adaptive-muted hover:text-adaptive-white">
+                        <i class="fa-solid fa-grip-vertical"></i>
+                      </div>
+                      <input v-model="pg.name" class="input input-bordered input-sm bg-adaptive-input flex-1" placeholder="名称" />
+                      <select v-model="pg.type" class="select select-bordered select-sm bg-adaptive-input w-32">
+                        <option value="select">手动选择</option>
+                        <option value="url-test">自动测速</option>
+                        <option value="fallback">故障转移</option>
+                        <option value="load-balance">负载均衡</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div v-if="pg.type === 'url-test' || pg.type === 'fallback'" class="grid grid-cols-3 gap-2 mb-2 ml-6">
+                    <input v-model="pg.url" class="input input-bordered input-xs bg-adaptive-input" placeholder="测速URL" />
+                    <input v-model.number="pg.interval" type="number" class="input input-bordered input-xs bg-adaptive-input" placeholder="间隔(秒)" />
+                    <input v-model.number="pg.tolerance" type="number" class="input input-bordered input-xs bg-adaptive-input" placeholder="容差(ms)" />
+                  </div>
+                  <div class="flex items-center gap-2 ml-6">
+                    <label class="flex items-center gap-1 text-xs">
+                      <input type="checkbox" v-model="pg.useAllProxies" class="checkbox checkbox-xs" /> 使用全部节点
+                    </label>
+                    <button v-if="!pg.useAllProxies" @click="openClashNodeSelector(i)"
+                      class="btn btn-xs btn-ghost text-accent">
+                      <i class="fa-solid fa-list-check"></i> 选择节点 ({{ (pg.proxies || []).length }})
+                    </button>
+                    <div class="flex-1"></div>
+                    <button @click="store.groupForm.clash_config.groups.splice(i, 1)"
+                      class="btn btn-xs btn-ghost text-error">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -261,6 +268,7 @@ import { API } from '../../api/config.js'
 const store = useMainStore()
 const uploadedFileName = ref('')
 const selectedResourceListRef = ref(null)
+const proxyGroupListRef = ref(null)
 
 const emit = defineEmits(['openNodeSelector', 'openClashNodeSelector'])
 
@@ -303,8 +311,35 @@ async function initConfigSortable() {
   } catch (e) { console.error('Config sortable init failed:', e) }
 }
 
+// === 策略组排序 ===
+let proxyGroupSortableInstance = null
+async function initProxyGroupSortable() {
+  if (!proxyGroupListRef.value) return
+  try {
+    const { default: Sortable } = await import('sortablejs')
+    if (proxyGroupSortableInstance) proxyGroupSortableInstance.destroy()
+    proxyGroupSortableInstance = new Sortable(proxyGroupListRef.value, {
+      handle: '.proxy-drag-handle',
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      onEnd: (evt) => {
+        const { oldIndex, newIndex } = evt
+        if (oldIndex === newIndex) return
+        const item = store.groupForm.clash_config.groups.splice(oldIndex, 1)[0]
+        store.groupForm.clash_config.groups.splice(newIndex, 0, item)
+      }
+    })
+  } catch (e) { console.error('Proxy Group sortable init failed:', e) }
+}
+
 watch(() => store.groupForm.config.length, () => { nextTick(initConfigSortable) })
-watch(() => store.groupModal.tab, (tab) => { if (tab === 'base') nextTick(initConfigSortable) })
+watch(() => store.groupForm.clash_config.groups.length, () => { nextTick(initProxyGroupSortable) })
+watch(() => store.groupModal.tab, (tab) => { 
+  if (tab === 'base') nextTick(initConfigSortable)
+  if (tab === 'clash') nextTick(initProxyGroupSortable)
+})
+
+
 
 // === 文件上传 ===
 function handleFileSelect(e) {

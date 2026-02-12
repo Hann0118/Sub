@@ -160,7 +160,7 @@ const filteredGroupNames = computed(() => {
 
 // 节点组资源 (type=group)
 const groupResources = computed(() => {
-  return store.clashNodeSelector.nodesByResource.filter(r => r.type === 'group')
+  return store.clashNodeSelector.nodesByResource.filter(r => r.type === 'group' || r.type === 'remote')
 })
 
 // 独立节点资源 (type=node)

@@ -1,0 +1,26 @@
+{
+  "name": "biaosub",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BiaoSUB Panel",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "hono": "^3.10.0",
+    "pinia": "^2.1.7",
+    "sortablejs": "^1.15.6",
+    "vue": "^3.4.15"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.3",
+    "autoprefixer": "^10.4.17",
+    "daisyui": "^3.9.4",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.0.12"
+  }
+}
